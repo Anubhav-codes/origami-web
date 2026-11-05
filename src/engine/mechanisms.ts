@@ -615,6 +615,55 @@ export function collapse(spec: CollapseSpec): Op {
   };
 }
 
+/**
+ * Keep only the outermost layer on each face (the paper you can see) and subdivide it on a grid with
+ * soft (undrawn) edges, so it can bend smoothly when inflated.
+ */
+function outerSkin(s0: FlatState, cell: number): FlatState {
+  const s = clone(s0);
+  const polys = s.facets.map(curPoly);
+  const keep = s.facets.filter((_, i) => {
+    const c = centroid(polys[i]);
+    // visible from the front or the back at any of a few sample points inside the facet
+    const samples: V2[] = [c, ...polys[i].map((p) => [p[0] * 0.8 + c[0] * 0.2, p[1] * 0.8 + c[1] * 0.2] as V2)];
+    return samples.some((q) => {
+      let above = 0;
+      let below = 0;
+      for (let j = 0; j < polys.length; j++) {
+        if (j === i || !pointIn(q, polys[j])) continue;
+        if (j > i) above++;
+        else below++;
+      }
+      return above === 0 || below === 0;
+    });
+  });
+  s.facets = keep;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const f of keep)
+    for (const p of curPoly(f)) {
+      x0 = Math.min(x0, p[0]);
+      x1 = Math.max(x1, p[0]);
+      y0 = Math.min(y0, p[1]);
+      y1 = Math.max(y1, p[1]);
+    }
+  const lines: [V2, V2][] = [];
+  for (let x = x0 + cell; x < x1 - cell / 2; x += cell) lines.push([[x, y0 - 1], [x, y1 + 1]]);
+  for (let y = y0 + cell; y < y1 - cell / 2; y += cell) lines.push([[x0 - 1, y], [x1 + 1, y]]);
+  for (const [a, b] of lines) {
+    const out: Facet[] = [];
+    for (const f of s.facets) {
+      const [L, R] = splitFacet(s, f, a, b, true);
+      if (L) out.push(L);
+      if (R) out.push(R);
+    }
+    s.facets = out;
+  }
+  return s;
+}
+
 function pointIn(p: V2, poly: V2[]) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -655,6 +704,10 @@ export interface PoseSpec {
   camera?: { tilt: number; turn: number; spin?: number };
   motion?: number;
   annots?: Annot[];
+  /** puff the model up: front layers bulge toward the viewer, back layers away (fraction of size) */
+  inflate?: number;
+  /** draw order: keep the flat stacking (good when viewed from the front) or sort by depth */
+  sort?: 'stack' | 'depth';
 }
 
 /**
@@ -664,7 +717,8 @@ export interface PoseSpec {
 export function pose3d(spec: PoseSpec): Op {
   return {
     plan(s0) {
-      const s = clone(s0);
+      let s = clone(s0);
+      if (spec.inflate) s = outerSkin(s, 0.08);
       const hinges = spec.hinges.map((h) => {
         const ids = idsOf(s, h.sel);
         const u = norm2(sub2(h.axis[1], h.axis[0]));
@@ -683,6 +737,32 @@ export function pose3d(spec: PoseSpec): Op {
       );
       const size0 = Math.sqrt(s.facets.reduce((a, f) => a + Math.abs(areaOf(curPoly(f))), 0));
       const eps = size0 * 0.004;
+      // inflation: which side of the middle of its stack each facet is on, and a dome over the outline
+      const side = new Map<number, number>();
+      let bx0 = Infinity;
+      let bx1 = -Infinity;
+      let by0 = Infinity;
+      let by1 = -Infinity;
+      if (spec.inflate) {
+        s.facets.forEach((f, i) => {
+          const c = centroid(polys[i]);
+          let total = 0;
+          for (let j = 0; j < polys.length; j++) if (pointIn(c, polys[j])) total++;
+          side.set(f.id, stack.get(f.id)! >= total / 2 ? 1 : -1);
+          for (const p of polys[i]) {
+            bx0 = Math.min(bx0, p[0]);
+            bx1 = Math.max(bx1, p[0]);
+            by0 = Math.min(by0, p[1]);
+            by1 = Math.max(by1, p[1]);
+          }
+        });
+      }
+      // boxy pillow: flat in the middle, steep near the outline (a puffed cube, not a ball)
+      const dome = (p: V2) => {
+        const x = Math.min(1, Math.abs((p[0] - (bx0 + bx1) / 2) / ((bx1 - bx0) / 2)));
+        const y = Math.min(1, Math.abs((p[1] - (by0 + by1) / 2) / ((by1 - by0) / 2)));
+        return Math.pow((1 - Math.pow(x, 3)) * (1 - Math.pow(y, 3)), 0.6);
+      };
       const TF = (u: number) => {
         const Ts: M3[] = [];
         hinges.forEach((h, i) => {
@@ -712,9 +792,11 @@ export function pose3d(spec: PoseSpec): Op {
               }
             const n = dir3(T, [0, 0, 1]);
             const off = eps * stack.get(f.id)!;
+            const inf = spec.inflate ? spec.inflate * size0 * u * (side.get(f.id) ?? 1) : 0;
             const pts = curPoly(f).map((p) => {
               const q = ap3(T, v3(p));
-              return [q[0] + n[0] * off, q[1] + n[1] * off, q[2] + n[2] * off] as V3;
+              const z = inf ? inf * dome(p) : 0;
+              return [q[0] + n[0] * off, q[1] + n[1] * off, q[2] + n[2] * off + z] as V3;
             });
             return { f, T, cUp: cUp(s, f), pts };
           });
@@ -724,7 +806,7 @@ export function pose3d(spec: PoseSpec): Op {
                 rotAxis([0, 0, 0], [0, 1, 0], (cam.turn * c + (cam.spin ?? 0) * Math.max(0, t - 0.7)) * D2R),
               )
             : undefined;
-          return { items, sort: 'depth', lead: null, camera };
+          return { items, sort: spec.sort ?? 'depth', lead: null, camera };
         },
       };
       return withIntro(core, 0.5);

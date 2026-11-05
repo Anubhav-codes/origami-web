@@ -235,3 +235,18 @@ export function quadrantAt(probe: V2, fromTop = true): Sel {
 /** The half of a paper quarter next to the horizontal (x) midline, or next to the vertical one. */
 export const nearXMidline: Sel = (i) => Math.abs(i.pc[0]) >= Math.abs(i.pc[1]);
 export const nearYMidline: Sel = (i) => Math.abs(i.pc[0]) < Math.abs(i.pc[1]);
+
+/**
+ * Move the selected facets to just below the lowest facet matched by `ref` (keeping their relative order).
+ * Only valid when the moved facets do not overlap anything they pass — e.g. two flaps on opposite halves.
+ */
+export function sinkBelow(move: Sel, ref: Sel) {
+  return (s: FlatState): FlatState => {
+    const inf = s.facets.map((f, k) => info(s, f, k));
+    const moving = s.facets.filter((_, k) => move(inf[k], s));
+    const rest = s.facets.filter((_, k) => !move(inf[k], s));
+    const at = rest.findIndex((f) => ref(info(s, f, s.facets.indexOf(f)), s));
+    const idx = at < 0 ? rest.length : at;
+    return { ...s, facets: [...rest.slice(0, idx), ...moving, ...rest.slice(idx)] };
+  };
+}

@@ -95,13 +95,33 @@ export function scene(frame: Frame, opts: ViewOpts): Scene {
     const pts3: V3[] = it.pts ?? flat.map((p) => ap3(it.T, [p[0], p[1], 0]));
     const pr = pts3.map(proj);
     let n = dir3(it.T, [0, 0, 1]);
+    if (it.pts && it.pts.length >= 3) {
+      // bent/displaced surface: use the real polygon normal (Newell), oriented like the rigid one
+      let nx = 0;
+      let ny = 0;
+      let nz = 0;
+      for (let i = 0; i < pts3.length; i++) {
+        const a = pts3[i];
+        const b = pts3[(i + 1) % pts3.length];
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+      }
+      const l = Math.hypot(nx, ny, nz);
+      if (l > 1e-12) {
+        let m: V3 = [nx / l, ny / l, nz / l];
+        if (m[0] * n[0] + m[1] * n[1] + m[2] * n[2] < 0) m = [-m[0], -m[1], -m[2]];
+        n = m;
+      }
+    }
     if (cam) n = dir3(cam, n);
     const facing = n[2] >= 0;
     const coloured = facing === it.cUp;
     const nv: V3 = facing ? n : [-n[0], -n[1], -n[2]];
     const lam = nv[0] * L[0] + nv[1] * L[1] + nv[2] * L[2];
     const k = Math.max(0.74, 1 + 0.34 * (lam - FLAT));
-    const base = coloured ? palette.front : palette.back;
+    const pal = it.pal ?? palette;
+    const base = coloured ? pal.front : pal.back;
     const fill = shadeHex(base, Math.min(1.08, k));
     const stroke = coloured ? shadeHex(base, 0.62 * Math.min(1.05, k)) : shadeHex(base, 0.7 * Math.min(1.05, k), [120, 104, 84], 0.35);
     let d = '';
@@ -131,7 +151,7 @@ export function scene(frame: Frame, opts: ViewOpts): Scene {
       edges,
       alpha: it.alpha ?? 1,
       lifted: zmax > size * 0.004,
-      z: zsum / pr.length,
+      z: zsum / pr.length + (it.zBias ?? 0),
       pts3,
     });
   }

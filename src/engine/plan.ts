@@ -21,6 +21,10 @@ export interface Item {
   alpha?: number;
   /** optional per-vertex 3D override (skinned/inflated surfaces) */
   pts?: V3[];
+  /** added to the depth-sort key (negative = drawn earlier, i.e. further back) */
+  zBias?: number;
+  /** colour override (e.g. several units of a modular model) */
+  pal?: { front: string; back: string };
 }
 
 export interface Frame {

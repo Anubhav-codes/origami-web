@@ -18,4 +18,8 @@ export const models: ModelEntry[] = [
   { id: 'heart', load: () => import('./heart') },
   { id: 'bird-base', load: () => import('./bird-base') },
   { id: 'crane', load: () => import('./crane') },
+  { id: 'balloon', load: () => import('./balloon') },
+  { id: 'reverse-folds', load: () => import('./reverse-folds') },
+  { id: 'crimp-pleat', load: () => import('./crimp-pleat') },
+  { id: 'sonobe', load: () => import('./sonobe') },
 ];
