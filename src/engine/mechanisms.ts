@@ -876,3 +876,141 @@ export function rig(spec: RigSpec): Op {
     },
   };
 }
+
+/* ======================================================= open & flatten */
+
+export interface OpenSpec {
+  /** apex of the triangle (closed top point) */
+  A: V2;
+  /** half-width of the triangle base; the base is w below the apex (45° sides) */
+  w: number;
+  /** which way the flattened diamond turns to face the viewer */
+  turn?: 1 | -1;
+  annots?: Annot[];
+  /**
+   * Pull mode: start from the flattened diamond (the op must be given the triangle state, e.g. via prep) and
+   * pull the two merged corners apart again by this fraction of the way back, viewed upside down in 3D.
+   */
+  pull?: number;
+}
+
+/**
+ * Open a two-layer triangle (a hat) at its base and bring the two base corners together, flattening it into a
+ * square diamond: the traditional boat move. The four quarter-triangles around the apex form a spherical
+ * rhombus linkage with one degree of freedom: the base corners' rays close (γ: 45° → 0) while the front and back
+ * centre rays open (η), with cos γ · cos η = cos 45° keeping every quarter rigid.
+ */
+export function openFlatten(spec: OpenSpec): Op {
+  return {
+    plan(s0) {
+      const s = clone(s0);
+      const { A, w } = spec;
+      splitSelected(s, () => true, A, [A[0], A[1] - 1]);
+      const polys = s.facets.map(curPoly);
+      const quarter = new Map<number, 'FL' | 'FR' | 'BL' | 'BR'>();
+      const rank = new Map<number, number>();
+      const count = new Map<string, number>();
+      s.facets.forEach((f, i) => {
+        const c = centroid(polys[i]);
+        let below = 0;
+        let total = 1;
+        for (let j = 0; j < polys.length; j++) {
+          if (j === i || !pointIn(c, polys[j])) continue;
+          total++;
+          if (j < i) below++;
+        }
+        const q = ((below >= total / 2 ? 'F' : 'B') + (c[0] < A[0] ? 'L' : 'R')) as 'FL';
+        quarter.set(f.id, q);
+        const r = count.get(q) ?? 0;
+        rank.set(f.id, r);
+        count.set(q, r + 1);
+      });
+      const A3 = v3(A);
+      const r2 = Math.SQRT1_2;
+      const dL: V3 = [-r2, -r2, 0];
+      const dR: V3 = [r2, -r2, 0];
+      const dF: V3 = [0, -1, 0];
+      const turn = spec.turn ?? 1;
+      const pose = (g: number, rot: number) => {
+        const eta = Math.acos(Math.min(1, Math.cos(Math.PI / 4) / Math.cos(g)));
+        const l: V3 = [-Math.sin(g), -Math.cos(g), 0];
+        const r: V3 = [Math.sin(g), -Math.cos(g), 0];
+        const f: V3 = [0, -Math.cos(eta), Math.sin(eta)];
+        const k: V3 = [0, -Math.cos(eta), -Math.sin(eta)];
+        const G = rotAxis(A3, [0, 1, 0], turn * rot);
+        return {
+          FL: mul3(G, frameMap(A3, dL, dF, l, f)),
+          FR: mul3(G, frameMap(A3, dR, dF, r, f)),
+          BL: mul3(G, frameMap(A3, dL, dF, l, k)),
+          BR: mul3(G, frameMap(A3, dR, dF, r, k)),
+        };
+      };
+      const eps = w * 0.006;
+      const place = (P: ReturnType<typeof pose>, f: Facet, i: number) => {
+        const T = P[quarter.get(f.id)!];
+        const n = dir3(T, [0, 0, 1]);
+        const sgn = quarter.get(f.id)![0] === 'F' ? 1 : -1;
+        const off = eps * (rank.get(f.id)! + 1) * sgn;
+        void i;
+        return { T, pts: curPoly(f).map((p) => { const q = ap3(T, v3(p)); return [q[0] + n[0] * off, q[1] + n[1] * off, q[2] + n[2] * off] as V3; }) };
+      };
+      // final order: from a nearly flat configuration
+      const near = pose(0.03, Math.PI / 2);
+      const zs = s.facets.map((f, i) => {
+        const p = place(near, f, i);
+        return { f, z: p.pts.reduce((a2, q) => a2 + q[2], 0) / p.pts.length };
+      });
+      zs.sort((a2, b2) => a2.z - b2.z);
+      const fin = pose(0, Math.PI / 2);
+      const end: FlatState = { ...s, facets: zs.map(({ f }) => settle(f, fin[quarter.get(f.id)!])) };
+      const endOrder = new Map(end.facets.map((f, i) => [f.id, i]));
+      if (spec.pull) {
+        const pull = spec.pull;
+        const D = w * Math.SQRT2;
+        const pc: Core = {
+          start: s,
+          end: s,
+          motion: 3.4,
+          annots: [{ type: 'pinch', b: [A[0] - 0.16, A[1] - D + 0.12], a: [A[0] + 0.16, A[1] - D + 0.12] }],
+          frame(t) {
+            const g = (Math.PI / 4) * pull * easeInOut(phase(t, 0.1, 0.8));
+            const P = pose(g, Math.PI / 2);
+            const items: Item[] = s.facets.map((f, i) => {
+              const p = place(P, f, i);
+              return { f, T: p.T, cUp: cUp(s, f), pts: p.pts };
+            });
+            const c = smooth(phase(t, 0, 0.7));
+            const camera = mul3(
+              rotAxis([0, 0, 0], [1, 0, 0], -0.5 * c),
+              mul3(rotAxis([0, 0, 0], [0, 1, 0], (0.5 + Math.max(0, t - 0.7) * 0.8) * c), rotAxis([0, 0, 0], [0, 0, 1], Math.PI)),
+            );
+            return { items, sort: 'depth', lead: null, camera };
+          },
+        };
+        return withIntro(pc, 0.6);
+      }
+      const core: Core = {
+        start: s,
+        end,
+        motion: 3,
+        annots: spec.annots ?? [{ type: 'pinch', a: [A[0] - w - 0.18, A[1] - w + 0.05], b: [A[0] + w + 0.18, A[1] - w + 0.05] }],
+        frame(t) {
+          const g = (Math.PI / 4) * (1 - easeInOut(phase(t, 0, 0.62)));
+          const rot = (Math.PI / 2) * easeInOut(phase(t, 0.4, 1));
+          const P = pose(g, rot);
+          const items: Item[] = s.facets.map((f, i) => {
+            const p = place(P, f, i);
+            return { f, T: p.T, cUp: cUp(s, f), pts: p.pts };
+          });
+          if (t > 0.96) {
+            items.sort((a2, b2) => endOrder.get(a2.f.id)! - endOrder.get(b2.f.id)!);
+            return { items, sort: 'stack', lead: null };
+          }
+          const tilt = Math.sin(Math.PI * phase(t, 0, 1)) * 28 * D2R;
+          return { items, sort: 'depth', lead: null, camera: rotAxis([0, 0, 0], [1, 0, 0], -tilt) };
+        },
+      };
+      return withIntro(core, 0.8);
+    },
+  };
+}

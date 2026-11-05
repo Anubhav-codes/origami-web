@@ -6,6 +6,7 @@ import {
   ap3,
   apply,
   compose,
+  centroid,
   cross2,
   dist2,
   lineRange,
@@ -56,6 +57,11 @@ export interface FoldSpec {
   showLine?: boolean;
   /** extra diagram symbols */
   annots?: Annot[];
+  /**
+   * Evaluate `sel` on the pieces after splitting every layer along the line (invisibly), instead of on whole
+   * facets. Use when the moving part is defined by where it is ("the band below the triangle").
+   */
+  byPiece?: boolean;
 }
 
 interface Group {
@@ -80,6 +86,60 @@ function prepare(s0: FlatState, specs: FoldSpec[]): { s: FlatState; groups: Grou
     const ids = new Set<number>();
     const touched: V2[][] = [];
     const out: Facet[] = [];
+    if (spec.byPiece) {
+      // split everything softly, then pick pieces
+      const pieces: { f: Facet; partner: Facet | null; left: boolean }[] = [];
+      for (const f of s.facets) {
+        if (movingAll.has(f.id)) {
+          pieces.push({ f, partner: null, left: sideOf(centroid(curPoly(f)), a, b) >= 0 });
+          continue;
+        }
+        const [L, R] = splitFacet(s, f, a, b, true);
+        if (L && R) {
+          pieces.push({ f: L, partner: R, left: true }, { f: R, partner: L, left: false });
+          touched.push(curPoly(f));
+        } else pieces.push({ f: (L ?? R)!, partner: null, left: !!L });
+      }
+      const tmp: FlatState = { ...s, facets: pieces.map((p) => p.f) };
+      const chosen = new Set<number>();
+      pieces.forEach((p, k) => {
+        if (movingAll.has(p.f.id) || p.left !== moveLeft) return;
+        if (sel(info(tmp, p.f, k), tmp)) chosen.add(p.f.id);
+      });
+      const harden = (f: Facet): Facet => {
+        if (!f.soft) return f;
+        const cur = curPoly(f);
+        const soft = f.soft.map((sf, i) => {
+          if (!sf) return sf;
+          const p = cur[i];
+          const q = cur[(i + 1) % cur.length];
+          return !(Math.abs(sideOf(p, a, b)) < 1e-7 && Math.abs(sideOf(q, a, b)) < 1e-7);
+        });
+        return soft.some(Boolean) ? { ...f, soft } : { id: f.id, paper: f.paper, m: f.m };
+      };
+      const hardIds = new Set<number>();
+      pieces.forEach((p) => {
+        if (chosen.has(p.f.id)) {
+          hardIds.add(p.f.id);
+          if (p.partner) hardIds.add(p.partner.id);
+        }
+      });
+      for (const p of pieces) {
+        const f = hardIds.has(p.f.id) ? harden(p.f) : p.f;
+        out.push(f);
+        if (chosen.has(p.f.id)) {
+          ids.add(f.id);
+          touched.push(curPoly(f));
+        }
+      }
+      s.facets = out;
+      ids.forEach((id) => movingAll.add(id));
+      const u0 = norm2(sub2(b, a));
+      const side0 = cross2(u0, sub2(spec.move, a)) >= 0 ? 1 : -1;
+      const sign0 = (spec.dir ?? 'valley') === 'valley' ? side0 : -side0;
+      groups.push(finishGroup(s, spec, ids, a, b, sign0, touched));
+      continue;
+    }
     s.facets.forEach((f, k) => {
       if (movingAll.has(f.id) || !sel(info(s, f, k), s)) {
         out.push(f);
@@ -102,6 +162,13 @@ function prepare(s0: FlatState, specs: FoldSpec[]): { s: FlatState; groups: Grou
     const side = cross2(u, sub2(spec.move, a)) >= 0 ? 1 : -1;
     const sign = (spec.dir ?? 'valley') === 'valley' ? side : -side;
 
+    groups.push(finishGroup(s, spec, ids, a, b, sign, touched));
+  }
+  return { s, groups };
+}
+
+
+function finishGroup(s: FlatState, spec: FoldSpec, ids: Set<number>, a: V2, b: V2, sign: number, touched: V2[][]): Group {
     // fold-line extent over the paper it crosses
     let lo = Infinity;
     let hi = -Infinity;
@@ -140,9 +207,7 @@ function prepare(s0: FlatState, specs: FoldSpec[]): { s: FlatState; groups: Grou
             }
       }
     }
-    groups.push({ spec, ids, a, b, sign, lead, extent });
-  }
-  return { s, groups };
+    return { spec, ids, a, b, sign, lead, extent };
 }
 
 function insertIndex(staticList: Facet[], place: Place, s: FlatState): number {

@@ -49,6 +49,18 @@ export const NOTES: Note[] = [
     now: 'Start with the sheet portrait (short edges at top and bottom). After folding the top edge down to the bottom edge, the 45° corner folds leave a 44 mm band on A4, which is what the brim needs.',
   },
   {
+    id: 'boat',
+    kind: 'clarification',
+    was: 'Step 4 folds each brim up, then step 5 opens the hat into a diamond.',
+    now: 'On A4 or Letter the brim is wider than the triangle, so its corners overhang. Fold the overhanging corners behind along the triangle’s edges after each brim; otherwise they stick out across the diamond when the hat is opened.',
+  },
+  {
+    id: 'boat',
+    kind: 'clarification',
+    was: 'Step 7: pull the two upper points apart and flatten the base.',
+    now: 'Every step up to the small diamond is simulated, including both “open and flatten” moves, which turn out to be a rigid one-degree-of-freedom linkage. The final pull-apart is shown with arrows only: its 3D shape could not be checked against the original tutorial here.',
+  },
+  {
     id: 'fortune-teller',
     kind: 'clarification',
     was: 'Step 6: “Lift the tip of each flap and slide a thumb and finger under it.”',

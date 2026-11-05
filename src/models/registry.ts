@@ -9,6 +9,7 @@ export const models: ModelEntry[] = [
   { id: 'square-from-rect', load: () => import('./square-from-rect') },
   { id: 'warmup', load: () => import('./warmup') },
   { id: 'cup', load: () => import('./cup') },
+  { id: 'boat', load: () => import('./boat') },
   { id: 'fortune-teller', load: () => import('./fortune-teller') },
   { id: 'kite-base', load: () => import('./kite-base') },
   { id: 'preliminary-base', load: () => import('./preliminary-base') },

@@ -250,3 +250,37 @@ export function sinkBelow(move: Sel, ref: Sel) {
     return { ...s, facets: [...rest.slice(0, idx), ...moving, ...rest.slice(idx)] };
   };
 }
+
+/** The front half of the layers stacked at a probe point (e.g. "the front layer of the diamond"). */
+export function frontHalfAt(probe: V2): Sel {
+  let cacheState: FlatState | null = null;
+  let ids = new Set<number>();
+  return (i, s) => {
+    if (cacheState !== s) {
+      cacheState = s;
+      const hits = s.facets.filter((f) => pointInPoly(probe, curPoly(f)));
+      ids = new Set(hits.slice(Math.floor(hits.length / 2)).map((f) => f.id));
+    }
+    return ids.has(i.f.id);
+  };
+}
+
+/** Facets in the upper (front) half of whatever stack they sit in, judged at their own centroid. */
+export const frontHalf: Sel = (() => {
+  let cacheState: FlatState | null = null;
+  let polys: V2[][] = [];
+  return (i: FInfo, s: FlatState) => {
+    if (cacheState !== s) {
+      cacheState = s;
+      polys = s.facets.map(curPoly);
+    }
+    let below = 0;
+    let total = 1;
+    for (let j = 0; j < polys.length; j++) {
+      if (j === i.index || !pointInPoly(i.c, polys[j])) continue;
+      total++;
+      if (j < i.index) below++;
+    }
+    return below >= total / 2;
+  };
+})();
