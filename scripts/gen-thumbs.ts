@@ -18,7 +18,7 @@ for (const m of models) {
   const last = c.plans[c.plans.length - 1];
   const fr = last.frame(1);
   const box = frameBox(fr, c.size, 0.08);
-  out[m.id] = frameToSvg(fr, box, def.palette, c.size, box.w / 200).replace(/(\d+\.\d{3})\d+/g, '$1');
+  out[m.id] = frameToSvg(fr, box, def.palette, c.size, box.w / 200).replace(/(\d+\.\d{2})\d+/g, '$1');
 
   // crease pattern: every facet edge, drawn in paper coordinates (what you see when you unfold the model)
   const flat = last.end;

@@ -718,7 +718,7 @@ export function pose3d(spec: PoseSpec): Op {
   return {
     plan(s0) {
       let s = clone(s0);
-      if (spec.inflate) s = outerSkin(s, 0.08);
+      if (spec.inflate) s = outerSkin(s, 0.1);
       const hinges = spec.hinges.map((h) => {
         const ids = idsOf(s, h.sel);
         const u = norm2(sub2(h.axis[1], h.axis[0]));

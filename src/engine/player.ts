@@ -29,7 +29,8 @@ export class Player {
   private starts: number[] = [];
   private lengths: number[] = [];
   readonly total: number;
-  private boxes: Box[] = [];
+  /** per step: boxes covering consecutive time segments, so the view follows the paper */
+  private boxes: Box[][] = [];
   time = 0;
   playing = false;
   speed = 1;
@@ -62,12 +63,7 @@ export class Player {
       t += len;
     }
     this.total = t;
-    // framing: each step's box covers its whole motion
-    for (const p of model.plans) {
-      let b = frameBox(p.frame(0), model.size);
-      for (const u of [0.25, 0.5, 0.75, 1]) b = unionBox(b, frameBox(p.frame(u), model.size));
-      this.boxes.push(square(b));
-    }
+    // framing is computed lazily per step (see boxAt)
     if ('ResizeObserver' in window) {
       this.ro = new ResizeObserver(() => {
         this.draw();
@@ -132,6 +128,7 @@ export class Player {
   /** Jump to the start of step i (shows the step's diagram symbols). */
   goto(i: number, play = false) {
     i = Math.max(0, Math.min(this.stepCount - 1, i));
+    if (this.playing) this.pause();
     this.time = this.starts[i];
     this.draw();
     if (play) {
@@ -143,6 +140,7 @@ export class Player {
   /** Show the finished state of step i. */
   gotoEnd(i: number) {
     i = Math.max(0, Math.min(this.stepCount - 1, i));
+    if (this.playing) this.pause();
     this.time = this.starts[i] + this.model.plans[i].duration;
     this.draw();
     this.emit();
@@ -177,6 +175,11 @@ export class Player {
 
   seek(time: number) {
     this.time = clamp(time, 0, this.total);
+    if (this.playing) {
+      // keep playing from the new position; in step mode stop at the end of that step
+      const { step } = this.locate();
+      this.stopAt = this.stepMode ? this.starts[step] + this.lengths[step] - this.hold * 0.25 : null;
+    }
     this.draw();
     this.emit();
   }
@@ -233,15 +236,42 @@ export class Player {
     this.raf = requestAnimationFrame(this.tick);
   };
 
+  private static SEG = 8;
+
+  private stepBoxes(i: number): Box[] {
+    let b = this.boxes[i];
+    if (!b) {
+      const plan = this.model.plans[i];
+      const n = Player.SEG;
+      const raw = Array.from({ length: n + 1 }, (_, j) => frameBox(plan.frame(j / n), this.model.size));
+      // segment j covers samples j and j+1 (and its neighbours, for safety)
+      b = raw.slice(0, n).map((_, j) => square(unionBox(unionBox(raw[j], raw[j + 1]), raw[Math.min(n, j + 2)])));
+      this.boxes[i] = b;
+    }
+    return b;
+  }
+
+  private boxAt(step: number, motion: number): Box {
+    const segs = this.stepBoxes(step);
+    const x = motion * segs.length;
+    const j = Math.min(segs.length - 1, Math.floor(x));
+    const f = smooth(clamp(x - j));
+    const a = segs[j];
+    const b = segs[Math.min(segs.length - 1, j + 1)];
+    let box = lerpBox(a, b, f);
+    // blend in from the previous step's final framing at the start of a step
+    if (step > 0 && motion < 0.2) {
+      const prev = this.stepBoxes(step - 1);
+      box = lerpBox(prev[prev.length - 1], box, smooth(motion / 0.2));
+    }
+    return box;
+  }
+
   /** Frame at an arbitrary time (used by the renderer and for previews). */
   frameAt(time: number): { frame: Frame; box: Box } {
     const { step, motion } = this.locate(time);
-    const plan = this.model.plans[step];
-    const frame = plan.frame(motion);
-    const prev = this.boxes[Math.max(0, step - 1)];
-    const cur = this.boxes[step];
-    const k = step === 0 ? 1 : smooth(clamp(motion / 0.35));
-    return { frame, box: lerpBox(prev, cur, k) };
+    const frame = this.model.plans[step].frame(motion);
+    return { frame, box: this.boxAt(step, motion) };
   }
 
   draw() {

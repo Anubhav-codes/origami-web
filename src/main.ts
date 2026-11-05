@@ -36,7 +36,7 @@ async function route() {
   main.dataset.path = path;
   document.querySelectorAll<HTMLAnchorElement>('[data-nav]').forEach((a) => {
     const n = a.dataset.nav!;
-    a.toggleAttribute('aria-current', path === '/' + n || (n === 'levels' && /^\/(level|fold)/.test(path)));
+    a.toggleAttribute('aria-current', path === '/' + n || (n === 'levels' && /^\/(level|fold)\//.test(path)));
   });
   if (!match) {
     main.innerHTML = '<section class="wrap narrow"><h1>Page not found</h1><p><a href="#/">Back to the start</a></p></section>';

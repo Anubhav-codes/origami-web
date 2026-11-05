@@ -1,0 +1,9 @@
+{
+  "name": "Fold — The Complete Origami Textbook",
+  "short_name": "Fold",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3eee4",
+  "theme_color": "#f3eee4",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

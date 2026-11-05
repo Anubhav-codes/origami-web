@@ -69,19 +69,19 @@ export const NOTES: Note[] = [
   {
     id: 'preliminary-base',
     kind: 'correction',
-    was: '“…with the four free corners at the bottom and two layers on each face.”',
+    was: '…with the four free corners at the bottom and two layers on each face.',
     now: 'The finished base has two flaps on each side (four layers per side). Each face shows one flat layer.',
   },
   {
     id: 'waterbomb-base',
     kind: 'correction',
-    was: '“…a closed point at the top and two layers of paper on each face.”',
+    was: '…a closed point at the top and two layers of paper on each face.',
     now: 'Two flaps on each face, each flap two layers thick.',
   },
   {
     id: 'rabbit-ear',
     kind: 'correction',
-    was: '“Crease the two angle bisectors of one end… Pinch a third crease from that point to the opposite edge.”',
+    was: 'Crease the two angle bisectors of one end… Pinch a third crease from that point to the opposite edge.',
     now: 'Bisect the two angles at the ends of one edge (fold each slanted edge onto that edge). The bisectors meet inside the triangle. Fold both at once; the third corner rises as a flap, which you pinch in half and lay to one side.',
   },
   {
@@ -111,13 +111,13 @@ export const NOTES: Note[] = [
   {
     id: 'crane',
     kind: 'correction',
-    was: '“Flapping: hold the crane at the base of the neck and pull the tail gently. The wings flap.”',
+    was: 'Flapping: hold the crane at the base of the neck and pull the tail gently. The wings flap.',
     now: 'The narrowed neck and tail lock the crane’s wings. Flapping is the traditional flapping bird: skip the narrowing in step 2, reverse-fold the neck and tail, then pull the tail.',
   },
   {
     id: 'masu-box',
     kind: 'correction',
-    was: '“The finished box is about 5.5 × 5.5 × 3 cm.”',
+    was: 'The finished box is about 5.5 × 5.5 × 3 cm.',
     now: 'From 15 cm paper the box is 15 ÷ (2√2) ≈ 5.3 cm square and half that, about 2.7 cm, tall.',
   },
   {
