@@ -1,0 +1,22 @@
+{
+  "name": "origami-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The Complete Origami Textbook as an interactive website with simulated, step-by-step SVG fold animations.",
+  "scripts": {
+    "dev": "vite",
+    "thumbs": "tsx scripts/gen-thumbs.ts",
+    "build": "npm run thumbs && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}
