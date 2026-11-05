@@ -88,7 +88,7 @@ export function scene(frame: Frame, opts: ViewOpts): Scene {
     return [centre[0] + (q[0] - centre[0]) * k, -(centre[1] + (q[1] - centre[1]) * k), q[2]];
   };
 
-  type Rec = Drawable & { z: number; pts3: V3[] };
+  type Rec = Drawable & { z: number; pts3: V3[]; cn: V3; cc: V3 };
   const recs: Rec[] = [];
   for (const it of frame.items) {
     const flat = curPoly(it.f);
@@ -137,6 +137,18 @@ export function scene(frame: Frame, opts: ViewOpts): Scene {
         edges += 'M' + f2(a[0]) + ' ' + f2(a[1]) + 'L' + f2(b[0]) + ' ' + f2(b[1]);
       }
     }
+    // camera-space centroid and normal (for comparing parallel layers by plane offset)
+    let ccx = 0;
+    let ccy = 0;
+    let ccz = 0;
+    for (const p of pts3) {
+      const q = cam ? ap3(cam, p) : p;
+      ccx += q[0];
+      ccy += q[1];
+      ccz += q[2];
+    }
+    const cc: V3 = [ccx / pts3.length, ccy / pts3.length, ccz / pts3.length];
+    const cn: V3 = n[2] >= 0 ? n : [-n[0], -n[1], -n[2]];
     let zmax = -Infinity;
     let zsum = 0;
     for (const p of pts3) {
@@ -153,9 +165,20 @@ export function scene(frame: Frame, opts: ViewOpts): Scene {
       lifted: zmax > size * 0.004,
       z: zsum / pr.length + (it.zBias ?? 0),
       pts3,
+      cn,
+      cc,
     });
   }
-  if (frame.sort === 'depth') recs.sort((a, b) => a.z - b.z);
+  if (frame.sort === 'depth')
+    recs.sort((a, b) => {
+      const d = a.cn[0] * b.cn[0] + a.cn[1] * b.cn[1] + a.cn[2] * b.cn[2];
+      if (d > 0.985 && a.z === a.z) {
+        // nearly parallel: whichever plane is further along the (camera-facing) normal is in front
+        const off = (a.cc[0] - b.cc[0]) * a.cn[0] + (a.cc[1] - b.cc[1]) * a.cn[1] + (a.cc[2] - b.cc[2]) * a.cn[2];
+        if (Math.abs(off) > size * 1e-4) return off;
+      }
+      return a.z - b.z;
+    });
 
   // soft shadow cast by lifted paper onto the table / paper below
   let shadow = '';

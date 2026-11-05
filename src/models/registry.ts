@@ -22,4 +22,5 @@ export const models: ModelEntry[] = [
   { id: 'reverse-folds', load: () => import('./reverse-folds') },
   { id: 'crimp-pleat', load: () => import('./crimp-pleat') },
   { id: 'sonobe', load: () => import('./sonobe') },
+  { id: 'masu-box', load: () => import('./masu-box') },
 ];

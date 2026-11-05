@@ -815,3 +815,64 @@ export function pose3d(spec: PoseSpec): Op {
 }
 
 export { translate3 };
+
+/* ================================================================== rig */
+
+export interface RigSpec {
+  groups: { sel: Sel; T: (t: number) => M3 }[];
+  camera?: (t: number) => M3;
+  motion?: number;
+  annots?: Annot[];
+  sort?: 'stack' | 'depth';
+}
+
+/**
+ * Free-form 3D finishing move: each group of facets follows its own chain of hinge rotations over time
+ * (first matching group wins). Layers keep their stacking through small offsets along their normals.
+ */
+export function rig(spec: RigSpec): Op {
+  return {
+    plan(s0) {
+      const s = clone(s0);
+      const polys = s.facets.map(curPoly);
+      const rankOf = new Map(
+        s.facets.map((f, i) => {
+          const c = centroid(polys[i]);
+          let below = 0;
+          for (let j = 0; j < i; j++) if (pointIn(c, polys[j])) below++;
+          return [f.id, below];
+        }),
+      );
+      const group = new Map<number, number>();
+      s.facets.forEach((f, k) => {
+        const i = info(s, f, k);
+        const g = spec.groups.findIndex((gr) => gr.sel(i, s));
+        group.set(f.id, g);
+      });
+      const size0 = Math.sqrt(s.facets.reduce((a, f) => a + Math.abs(areaOf(curPoly(f))), 0));
+      const eps = size0 * 0.004;
+      const core: Core = {
+        start: s,
+        end: s,
+        motion: spec.motion ?? 3.5,
+        annots: spec.annots ?? [],
+        frame(t) {
+          const Ts = spec.groups.map((g) => g.T(t));
+          const items: Item[] = s.facets.map((f) => {
+            const g = group.get(f.id)!;
+            const T = g >= 0 ? Ts[g] : I3;
+            const n = dir3(T, [0, 0, 1]);
+            const off = eps * rankOf.get(f.id)!;
+            const pts = curPoly(f).map((p) => {
+              const q = ap3(T, v3(p));
+              return [q[0] + n[0] * off, q[1] + n[1] * off, q[2] + n[2] * off] as V3;
+            });
+            return { f, T, cUp: cUp(s, f), pts };
+          });
+          return { items, sort: spec.sort ?? 'depth', lead: null, camera: spec.camera?.(t) };
+        },
+      };
+      return withIntro(core, 0.6);
+    },
+  };
+}
